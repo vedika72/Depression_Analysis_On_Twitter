@@ -2,7 +2,7 @@
 """
 Created on Fri Mar  6 08:45:35 2020
 
-@author: HP
+@author: Vedika Bansal
 """
 
 import json
@@ -15,22 +15,80 @@ import os
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-"""
-df = pd.DataFrame(all_data, columns=['ID' ,'text','country'])
-print(df)
-ifile.close()    
-"""
+import re #regular expression
+from textblob import TextBlob
+import string
+import preprocessor as p
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+
+emoticons_happy = set([
+    ':-)', ':)', ';)', ':o)', ':]', ':3', ':c)', ':>', '=]', '8)', '=)', ':}',
+    ':^)', ':-D', ':D', '8-D', '8D', 'x-D', 'xD', 'X-D', 'XD', '=-D', '=D',
+    '=-3', '=3', ':-))', ":'-)", ":')", ':*', ':^*', '>:P', ':-P', ':P', 'X-P',
+    'x-p', 'xp', 'XP', ':-p', ':p', '=p', ':-b', ':b', '>:)', '>;)', '>:-)',
+    '<3'
+    ])
+
+# Sad Emoticons
+emoticons_sad = set([
+    ':L', ':-/', '>:/', ':S', '>:[', ':@', ':-(', ':[', ':-||', '=L', ':<',
+    ':-[', ':-<', '=\\', '=/', '>:(', ':(', '>.<', ":'-(", ":'(", ':\\', ':-c',
+    ':c', ':{', '>:\\', ';('
+    ])
+
+#Emoji patterns
+emoji_pattern = re.compile("["
+         u"\U0001F600-\U0001F64F"  # emoticons
+         u"\U0001F300-\U0001F5FF"  # symbols & pictographs
+         u"\U0001F680-\U0001F6FF"  # transport & map symbols
+         u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
+         u"\U00002702-\U000027B0"
+         u"\U000024C2-\U0001F251"
+         "]+", flags=re.UNICODE)
+
+#combine sad and happy emoticons
+emoticons = emoticons_happy.union(emoticons_sad)
+
+#mrhod clean_tweets()
+def clean_tweets(tweet):
+    stop_words = set(stopwords.words('english'))
+    word_tokens = word_tokenize(tweet)
+
+    #after tweepy preprocessing the colon left remain after removing mentions
+    #or RT sign in the beginning of the tweet
+    tweet = re.sub(r':', '', tweet)
+    tweet = re.sub(r'‚Ä¶', '', tweet)
+    #replace consecutive non-ASCII characters with a space
+    tweet = re.sub(r'[^\x00-\x7F]+',' ', tweet)
+
+
+    #remove emojis from tweet
+    tweet = emoji_pattern.sub(r'', tweet)
+
+    #filter using NLTK library append it to a string
+    filtered_tweet = [w for w in word_tokens if not w in stop_words]
+    filtered_tweet = []
+
+    #looping through conditions
+    for w in word_tokens:
+        #check tokens against stop words , emoticons and punctuations
+        if w not in stop_words and w not in emoticons and w not in string.punctuation:
+            filtered_tweet.append(w)
+    return ' '.join(filtered_tweet)
 
 ifile = open('Depression-Cascading-Behaviour-Analysis-Twitter/Twitter_test_json.json', 'r')
 tweet_list = []
 all_data = []
 i=0
+
 for line in ifile:
     #print(line)
     i = i+1
     try:
         tweet = json.loads(line)
         tweet_list.append(tweet)
+
         
         t_id = tweet['id']
         t_hashtags = tweet['entities']['hashtags']      
@@ -43,15 +101,33 @@ for line in ifile:
             t_country = tweet['place']['country']
         else:
             t_country = " "
+        #clean_text = p.clean(tweet['text'])
+
+        #call clean_tweet method for extra preprocessing
+        filtered_tweet=clean_tweets(t_text)
         
+        #pass textBlob method for sentiment calculations
+        blob = TextBlob(filtered_tweet)
+        sentiments = blob.sentiment
+
+        #seperate polarity and subjectivity in to two variables
+        polarity = sentiments.polarity
+        subjectivity = sentiments.subjectivity
+        mentions = ", ".join([mention['screen_name'] for mention in tweet['entities']['user_mentions']])      
         if(t_lang == 'en'):
-            all_data.append([t_id, t_hashtags, t_lang, t_text, t_user_id, t_user_description, t_country])
+            all_data.append([t_id, t_hashtags, t_lang, t_text, filtered_tweet, sentiments, polarity, subjectivity, t_user_id, t_user_description, t_country, tweet['favorite_count'], tweet['retweet_count'], mentions])
+#            all_data.append([t_id, t_hashtags, t_lang, t_text, filtered_tweet, t_user_id, t_user_description, t_country])
 
     except:
         continue
-    #if i>25:
-        #break
-df = pd.DataFrame(all_data, columns=['Id' ,'Hashtags','Language','Text', 'User Id', 'User Description', 'Country'])
+    """
+    if i>25:
+        break
+ 
+    """
+df = pd.DataFrame(all_data, columns=['Id' ,'Hashtags','Language','Text', 'Filtered Text', 'Sentiment', 'Polarity', 'Subjectivity', 'User Id', 'User Description', 'Country', 'Favourite Count', 'Retweets Count', 'Mentions'])
+#df = pd.DataFrame(all_data, columns=['Id' ,'Hashtags','Language','Text', 'Filtered Text', 'Sentiment', 'Polarity', 'Subjectivity', 'User Id', 'User Description', 'Country'])
+#df = pd.DataFrame(all_data, columns=['Id' ,'Hashtags','Language','Text', 'Filtered Text', 'User Id', 'User Description', 'Country'])
 df.to_csv('Twitter Data.csv')
 print(df)
 '''    
